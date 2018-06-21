@@ -38,6 +38,8 @@ parser.add_argument('--use_cap', default=False, action='store_true')
 parser.add_argument('--use_pretrained', default=False, action='store_true')
 # dir
 parser.add_argument('--dir', default='exp/test')
+# ensemble
+parser.add_argument('--models', nargs='+')
 args = parser.parse_args()
 
 class Config():
@@ -142,3 +144,6 @@ class Config():
     dir_output = args.dir
     dir_model = os.path.join(args.dir, 'params')
     path_log = os.path.join(dir_output, 'log.txt')
+
+    # ensemble
+    ensembles = args.models
