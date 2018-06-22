@@ -122,8 +122,14 @@ class Ensemble():
                 optimizer = tf.train.AdamOptimizer(lr)
             elif _lr_m == 'adagrad':
                 optimizer = tf.train.AdagradOptimizer(lr)
+            elif _lr_m == 'adadelta':
+                optimizer = tf.train.AdadeltaOptimizer(lr)
             elif _lr_m == 'sgd':
                 optimizer = tf.train.GradientDescentOptimizer(lr)
+            elif _lr_m == 'msgd':
+                optimizer = tf.train.MomentumOptimizer(lr, 0.9)
+            elif _lr_m == 'nsgd':
+                optimizer = tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
             elif _lr_m == 'rmsprop':
                 optimizer = tf.train.RMSPropOptimizer(lr)
             else:
