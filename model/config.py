@@ -40,6 +40,7 @@ parser.add_argument('--use_pretrained', default=False, action='store_true')
 parser.add_argument('--dir', default='exp/test')
 # ensemble
 parser.add_argument('--models', nargs='+')
+parser.add_argument('--debug', default=False, action='store_true')
 args = parser.parse_args()
 
 class Config():
@@ -147,3 +148,4 @@ class Config():
 
     # ensemble
     ensembles = args.models
+    debug = args.debug

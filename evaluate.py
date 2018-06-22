@@ -1,5 +1,6 @@
 from model.data_utils import CoNLLDataset
 from model.ner_model import NERModel
+from model.ensemble import Ensemble
 from model.config import Config
 
 
@@ -71,7 +72,10 @@ def main():
     config = Config()
 
     # build model
-    model = NERModel(config)
+    if config.ensembles:
+        model = Ensemble(config)
+    else: 
+        model = NERModel(config)
     model.build()
     model.restore_session(config.dir_model)
 

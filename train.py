@@ -1,6 +1,7 @@
 from model.data_utils import CoNLLDataset
 from model.ner_model import NERModel
 from model.ensemble import Ensemble
+from model.debug import Debug
 from model.config import Config
 
 
@@ -10,12 +11,12 @@ def main():
 
     # build model
     if config.ensembles:
-        model = Ensemble(config)
+        model = Debug(config) if config.debug else Ensemble(config)
     else:
         model = NERModel(config)
     model.build()
-    # model.restore_session("results/crf/model.weights/") # optional, restore weights
-    # model.reinitialize_weights("proj")
+    # debug model
+    if config.debug: model.restore_session(config.ensembles[0]+'/params')
 
     # create datasets
     dev   = CoNLLDataset(config.filename_dev, config.processing_word,
