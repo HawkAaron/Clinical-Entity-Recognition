@@ -1,14 +1,26 @@
 import os
 import time
+import random
+import numpy as np
 import tensorflow as tf
 
-from .data_utils import pad_sequences, minibatches
-from .ner_model import NERModel
+from .data_utils import pad_sequences, minibatches, get_chunks
+from .base_model import BaseModel
 
-class Ensemble(NERModel):
+def all_saveable_objects(scope=None):
+    return (tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope) +
+            tf.get_collection(tf.GraphKeys.SAVEABLE_OBJECTS, scope))
+
+class Ensemble():
     """Ensemble of several models"""
     def __init__(self, config):
-        super(Ensemble, self).__init__(config)
+        self.config = config
+        self.logger = config.logger
+        self.idx_to_tag = {idx: tag for tag, idx in
+                        self.config.vocab_tags.items()}
+
+        random.seed(1024)
+        tf.set_random_seed(1024)
         cfg = tf.ConfigProto()
         cfg.gpu_options.allow_growth = True
         self.sess = tf.Session(config=cfg)
@@ -63,7 +75,6 @@ class Ensemble(NERModel):
             feed[scope + '/cap_ids:0'] = cap_ids
             feed[scope + '/char_ids:0'] = char_ids
             feed[scope + '/word_lengths:0'] = word_lengths
-            #feed[scope + '/labels:0'] = labels
             feed[scope + '/dropout:0'] = 1.0
         feed[self.sequence_lengths] = sequence_lengths
 
@@ -75,9 +86,11 @@ class Ensemble(NERModel):
             w = tf.get_variable('w', dtype=tf.float32, shape=[len(self.models)],
                     initializer=tf.zeros_initializer())
             w = tf.nn.softmax(w)
+            # multiply each model outputs with a probability scalar
             out = tf.tensordot(tf.stack(self.models), w, [0, 0])
-            self.logits = tf.layers.dense(tf.nn.relu(out), self.config.ntags,
-                        kernel_initializer=tf.contrib.layers.xavier_initializer())
+            self.logits = out
+            #self.logits = tf.layers.dense(tf.nn.relu(out), self.config.ntags,
+            #            kernel_initializer=tf.contrib.layers.xavier_initializer())
 
     def add_pred_op(self):
         if not self.config.use_crf:
@@ -85,10 +98,12 @@ class Ensemble(NERModel):
 
     def add_loss_op(self):
         if self.config.use_crf:
-            log_ll, trans_params = tf.contrib.crf.crf_log_likelihood(
-                    self.logits, self.labels, self.sequence_lengths, self.trans)
-            self.trans_params = trans_params
-            self.loss = tf.reduce_mean(-log_ll)
+            with tf.variable_scope('fusion'):
+                trans = tf.Variable(self.trans, name='transitions')
+                log_ll, trans_params = tf.contrib.crf.crf_log_likelihood(
+                        self.logits, self.labels, self.sequence_lengths, trans)
+                self.trans_params = trans_params
+                self.loss = tf.reduce_mean(-log_ll)
         else:
             losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
                     labels=self.labels, logits=self.logits)
@@ -96,12 +111,13 @@ class Ensemble(NERModel):
             losses = tf.boolean_mask(losses, mask)
             self.loss = tf.reduce_mean(losses)
 
+        # TODO only summary this training
         tf.summary.scalar('loss', self.loss)
 
-    def add_train_op(self, lr_method, lr, loss, clip=0, g_vars=None):
+    def add_train_op(self, lr_method, lr, loss, clip=0, tvars=None):
         _lr_m = lr_method.lower()
 
-        with tf.variable_scope('train_setp'):
+        with tf.variable_scope('train_step'):
             if _lr_m == 'adam':
                 optimizer = tf.train.AdamOptimizer(lr)
             elif _lr_m == 'adagrad':
@@ -114,13 +130,12 @@ class Ensemble(NERModel):
                 raise NotImplementedError("Unknown method {}".format(_lr_m))
             
             if clip > 0:
-                grads, vs = zip(*optimizer.compute_gradients(loss, var_list=g_vars))
-                        #tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'fusion')))
+                grads, vs = zip(*optimizer.compute_gradients(loss, var_list=tvars))
                 grads, gnorm = tf.clip_by_global_norm(grads, clip)
                 self.train_op = optimizer.apply_gradients(zip(grads, vs))
             else:
-                self.train_op = optimizer.minimize(loss, var_list=g_vars) 
-                        #tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'fusion'))
+                self.train_op = optimizer.minimize(loss, var_list=tvars) 
+
 
     def build(self):
         self.add_placeholders()
@@ -129,14 +144,35 @@ class Ensemble(NERModel):
         self.add_loss_op()
 
         # fusion scope
-        tvars = tf.trainable_variables()
-        g_vars = [var for var in tvars if 'fusion' in var.name]
- 
+        tvars = tf.trainable_variables(scope='fusion') 
         self.add_train_op(self.config.lr_method, self.lr, self.loss,
-                self.config.clip, g_vars)
-        self.sess.run(tf.global_variables_initializer())
-        self.saver = tf.train.Saver(g_vars)
-                #tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, 'fusion'))
+                self.config.clip, tvars)
+
+        # only init fusion and train_step scopes
+        self.sess.run(tf.variables_initializer(tvars + all_saveable_objects('train_step')))
+
+        # {v.op.name: v for v in tvars} + {'transitions': self.trans_params}
+        self.saver = tf.train.Saver(tvars)
+    
+    def predict_batch(self, words):
+        fd, sequence_lengths = self.get_feed_dict(words, dropout=1.0)
+
+        if self.config.use_crf:
+            viterbi_sequences = []
+            logits, trans_params = self.sess.run(
+                    [self.logits, self.trans_params], feed_dict=fd)
+
+            for logit, sequence_length in zip(logits, sequence_lengths):
+                logit = logit[:sequence_length]
+                viterbi_seq, viterbi_score = tf.contrib.crf.viterbi_decode(
+                        logit, trans_params)
+                viterbi_sequences += [viterbi_seq]
+
+            return viterbi_sequences, sequence_lengths
+        else:
+            labels_pred = self.sess.run(self.labels_pred, feed_dict=fd)
+
+            return labels_pred, sequence_lengths
 
     def run_epoch(self, train, dev, epoch):
         batch_size = self.config.batch_size
@@ -160,4 +196,80 @@ class Ensemble(NERModel):
                             epoch+1, time.time() - start_time, self.config.lr, msg))
         
         return metrics['f1']
+
+    def run_evaluate(self, test):
+        accs = []
+        correct_preds, total_correct, total_preds = 0., 0., 0.
+        for words, labels in minibatches(test, self.config.batch_size):
+            labels_pred, sequence_lengths = self.predict_batch(words)
+
+            for lab, lab_pred, length in zip(labels, labels_pred, sequence_lengths):
+                lab = lab[:length]
+                lab_pred = lab_pred[:length]
+                accs += [a == b for (a, b) in zip(lab, lab_pred)]
+
+                lab_chunks = set(get_chunks(lab, self.config.vocab_tags))
+                lab_pred_chunks = set(get_chunks(lab_pred, self.config.vocab_tags))
+
+                correct_preds += len(lab_chunks & lab_pred_chunks)
+                total_preds += len(lab_pred_chunks)
+                total_correct += len(lab_chunks)
+
+        p = correct_preds / total_preds if correct_preds > 0 else 0
+        r = correct_preds / total_correct if correct_preds > 0 else 0
+        f1 = 2 * p * r / (p + r) if correct_preds > 0 else 0
+        acc = np.mean(accs)
+
+        return {'p': 100*p, 'r': 100*r, 'acc': 100*acc, 'f1': 100*f1}
+
+    def predict(self, words):
+        if type(words[0]) == tuple:
+            words = list(zip(*words))
+        pred_ids, _ = self.predict_batch([words])
+        preds = [self.idx_to_tag[idx] for idx in list(pred_ids[0])]
+
+        return preds
+
+    def restore_session(self, dir_model):
+        self.logger.info('Reloading the latest trained model...')
+        self.saver.restore(self.sess, dir_model)
+
+    def save_session(self):
+        self.saver.save(self.sess, self.config.dir_model)
+
+    def close_session(self):
+        self.sess.close()
+
+    def train(self, train, dev):
+        best_score = 0
+        nepoch_no_imprv = 0
+        
+        for epoch in range(self.config.nepochs):
+            self.logger.info('Epoch {} out of {}'.format(epoch + 1,
+                        self.config.nepochs))
+
+            score = self.run_epoch(train, dev, epoch)
+            
+            # only one epoch
+            #return ;
+            if score > best_score:
+                nepoch_no_imprv = 0
+                self.save_session()
+                best_score = score
+                self.logger.info('- new best score {}'.format(score))
+            else:
+                self.config.lr *= self.config.lr_decay
+                self.restore_session(self.config.dir_model)
+                nepoch_no_imprv += 1
+                if nepoch_no_imprv >= self.config.nepoch_no_imprv:
+                    self.logger.info('- early stopping {} epochs without '\
+                            'improvement'.format(nepoch_no_imprv))
+                    break
+
+    def evaluate(self, test):
+        self.logger.info('Testing model over test set')
+        metrics = self.run_evaluate(test)
+        msg = ' - '.join(['{} {:04.2f}'.format(k, v)
+                for k, v in metrics.items()])
+        self.logger.info(msg)
 
