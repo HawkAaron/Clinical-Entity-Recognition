@@ -30,6 +30,9 @@ Choose several models with highest F1 score on dev set, add their dirs to `model
 
 # References
 [Named Entity Recognition with Tensorflow](https://github.com/guillaumegenthial/sequence_tagging)
+
 [End-to-end Sequence Labeling via Bi-directional LSTM-CNNs-CRF](https://arxiv.org/pdf/1603.01354.pdf)
+
 [Unified Neural Architecture for Drug, Disease and Clinical Entity Recognition](https://arxiv.org/pdf/1708.03447.pdf)
+
 [Bidirectional LSTM-CRF for Clinical Concept Extraction](https://arxiv.org/pdf/1610.05858.pdf)
