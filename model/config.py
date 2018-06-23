@@ -132,8 +132,8 @@ class Config():
     filename_trimmed = 'data/glove.6B.{}d.trimmed.npz'.format(dim_word)
     
     # dataset
-    filename_train = 'data/train.eval'
-    filename_dev = 'data/dev.eval'
+    filename_train = 'data/train.txt'
+    filename_dev = 'data/dev.txt'
     filename_test = 'data/test.txt'
 
     max_iter = None # if not None, max number of examples in Dataset
