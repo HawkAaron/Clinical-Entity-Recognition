@@ -1,8 +1,7 @@
 
 for i in exp/*; do
-    [ -f $i ] && continue
+    [ -f $i -o ! -f $i/checkpoint ] && continue
+    echo $i \
+    `grep "score" $i/log.txt | cut -d ' ' -f 7 | tail -n 1`
     echo
-    echo $i
-    grep "score" $i/log.txt | tail -n 1
-done #| grep "score" | cut -d ' ' -f 7 | sort -n | tail -n1
-
+done 
