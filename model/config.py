@@ -40,6 +40,8 @@ parser.add_argument('--use_pretrained', default=False, action='store_true')
 parser.add_argument('--dir', default='exp/test')
 # ensemble
 parser.add_argument('--models', nargs='+')
+parser.add_argument('--matrix', default=False, action='store_true')
+parser.add_argument('--use_proj', default=False, action='store_true')
 parser.add_argument('--debug', default=False, action='store_true')
 args = parser.parse_args()
 
@@ -130,8 +132,8 @@ class Config():
     filename_trimmed = 'data/glove.6B.{}d.trimmed.npz'.format(dim_word)
     
     # dataset
-    filename_train = 'data/trdv.txt'
-    filename_dev = 'data/dev.txt'
+    filename_train = 'data/train.eval'
+    filename_dev = 'data/dev.eval'
     filename_test = 'data/test.txt'
 
     max_iter = None # if not None, max number of examples in Dataset
@@ -148,4 +150,6 @@ class Config():
 
     # ensemble
     ensembles = args.models
+    matrix = args.matrix
+    use_proj = args.use_proj
     debug = args.debug

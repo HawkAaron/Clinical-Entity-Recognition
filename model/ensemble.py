@@ -83,14 +83,23 @@ class Ensemble():
     def add_logits_op(self):
         with tf.variable_scope('fusion'):
             # average initial
-            w = tf.get_variable('w', dtype=tf.float32, shape=[len(self.models)],
-                    initializer=tf.zeros_initializer())
-            w = tf.nn.softmax(w)
-            # multiply each model outputs with a probability scalar
-            out = tf.tensordot(tf.stack(self.models), w, [0, 0])
+            if self.config.matrix:
+                w = tf.get_variable('w', dtype=tf.float32, 
+                        shape=[len(self.models), self.config.ntags],
+                        initializer=tf.zeros_initializer())
+                w = tf.nn.softmax(w, 0)
+                w = tf.reshape(w, (len(self.models), 1, 1, self.config.ntags))
+                out = tf.reduce_sum(tf.stack(self.models) * w, 0)
+            else:
+                w = tf.get_variable('w', dtype=tf.float32, shape=[len(self.models)],
+                        initializer=tf.zeros_initializer())
+                w = tf.nn.softmax(w)
+                # multiply each model outputs with a probability scalar
+                out = tf.tensordot(tf.stack(self.models), w, [0, 0])
             self.logits = out
-            #self.logits = tf.layers.dense(tf.nn.relu(out), self.config.ntags,
-            #            kernel_initializer=tf.contrib.layers.xavier_initializer())
+            if self.config.use_proj:
+                self.logits = tf.layers.dense(tf.nn.relu(out), self.config.ntags,
+                        kernel_initializer=tf.contrib.layers.xavier_initializer())
 
     def add_pred_op(self):
         if not self.config.use_crf:
