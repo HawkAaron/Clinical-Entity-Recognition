@@ -5,7 +5,32 @@ State-of-the-art performance after ensemble training (F1 score between 84 and 85
 
 For more details, please check the [report](https://github.com/HawkAaron/Clinical-Entity-Recognition/blob/master/doc/report.pdf).
 
-## Getting started
+## Using pretrained models
+1. Pretrained graph can be easily loaded using TensorFlow. The pretrained models are in `exp` dir.
+
+2. Using ensemble trained model with
+```bash
+# pretrained ensemble of models
+models="exp/adam.cap-2.char-100-100.word-300-300.lstm-1.p-0 exp/rmsprop.char-100-100.plstm-2 exp/rmsprop.cap-5.char-100-100.word-300-300.sru-1 exp/rmsprop.cap-5.char-100-300.word-300-300.lstm-2.p-0 exp/rmsprop.cap-2.char-50-100.word-300-100.lstm-3.p-0 exp/rmsprop.cap-5.char-50-100.word-300-100.sru-2 exp/rmsprop.char-20-100.plstm-2 exp/rmsprop.cap-2.char-100-300.word-300-300.sru-2 exp/adam.cap-2.char-50-300.word-300-300.lstm-1.p-100 exp/rmsprop.cap-2.char-100-100.word-300-100.sru-3 exp/rmsprop.cap-2.char-50-300.word-300-300.sru-2 exp/adam.0.0115.-1.dim_word200.hidden_word300.dim_char100.hidden_char300.layers1.LSTM exp/rmsprop.cap-2.char-50-300.word-300-100.lstm-3.p-0 exp/adam.cap-5.char-50-100.word-300-300.lstm-2.p-0 exp/rmsprop.cap-2.char-100-300.word-300-300.lstm-2.p-0"
+
+# ensemble trained model dir
+dir=exp/sgd
+
+# evaluate
+CUDA_VISIBLE_DEVICES=0 python evaluate.py \
+            --lr_method sgd \
+            --use_cap \
+            --use_char \
+            --use_pretrained \
+            --dir $dir \
+            --models $models > "$dir/test.txt")
+
+# combine prediction
+python combine.py --src data/text.txt --pred "$dir/text.txt" --dst $dir/result.txt
+
+```
+
+## Start from scratch
 1. Download the GloVe vectors with
 ```bash
 wget -P ./data/ "http://nlp.stanford.edu/data/glove.6B.zip"
@@ -19,6 +44,11 @@ python build_data.py
 python train.py <params>
 python evaluate.py <params>
 ```
+
+## Requirements
+* Python 3.6
+* NumPy 1.14
+* TensorFlow >= 1.4
 
 ## Ensemble training
 1. Grid search hyper parameters
