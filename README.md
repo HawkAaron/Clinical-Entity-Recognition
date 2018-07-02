@@ -26,7 +26,7 @@ CUDA_VISIBLE_DEVICES=0 python evaluate.py \
             --models $models > "$dir/test.txt"
 
 # combine prediction
-python combine.py --src data/text.txt --pred "$dir/text.txt" --dst $dir/result.txt
+python combine.py --src data/test.txt --pred "$dir/test.txt" --dst $dir/result.txt
 
 ```
 
